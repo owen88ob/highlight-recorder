@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>高光回录 · 每一波天秀,都值得被留下</title>
+<meta name="description" content="开源 Android 游戏高光回录:悬浮球一键保存按下前 N 秒的屏幕画面。环形缓冲、硬件编码、零帧拷贝。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='%231b1b2f' stroke='white' stroke-width='4'/><circle cx='50' cy='50' r='22' fill='%23ff3b30'/></svg>">
+<style>
+:root{
+  --bg:#0b0b14; --bg2:#12121f; --card:#18182880; --line:#ffffff14;
+  --txt:#f2f2f7; --dim:#9a9ab0; --red:#ff3b30; --red2:#ff6e60;
+  --grad:linear-gradient(135deg,#ff3b30 0%,#ff8a5c 50%,#ffc46b 100%);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--txt);font-family:"PingFang SC","Microsoft YaHei",system-ui,-apple-system,sans-serif;overflow-x:hidden}
+::selection{background:#ff3b3066}
+
+/* ---------- nav ---------- */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;
+  padding:16px 6vw;background:#0b0b14b8;backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:.5px}
+.logo .dot{width:26px;height:26px;border-radius:50%;background:#1b1b2f;border:2px solid #fff;display:grid;place-items:center}
+.logo .dot::after{content:"";width:11px;height:11px;border-radius:50%;background:var(--red);animation:breath 1.8s ease-in-out infinite}
+nav .links{display:flex;gap:28px;font-size:14px}
+nav .links a{color:var(--dim);text-decoration:none;transition:color .2s}
+nav .links a:hover{color:var(--txt)}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 22px;border-radius:999px;font-size:14px;font-weight:600;
+  text-decoration:none;transition:transform .15s,box-shadow .15s;cursor:pointer;border:none}
+.btn-primary{background:var(--grad);color:#1a0b08;box-shadow:0 4px 24px #ff3b3044}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 32px #ff3b3066}
+.btn-ghost{background:transparent;color:var(--txt);border:1px solid #ffffff2e}
+.btn-ghost:hover{border-color:#ffffff66;transform:translateY(-2px)}
+
+/* ---------- hero ---------- */
+header{min-height:100svh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;
+  position:relative;padding:120px 6vw 80px;overflow:hidden}
+.glow{position:absolute;border-radius:50%;filter:blur(120px);opacity:.35;pointer-events:none}
+.glow.a{width:520px;height:520px;background:#ff3b30;top:-160px;left:-120px}
+.glow.b{width:420px;height:420px;background:#5c3bff;bottom:-140px;right:-100px}
+.tag{font-size:13px;color:var(--dim);border:1px solid var(--line);padding:6px 16px;border-radius:999px;margin-bottom:28px;
+  background:#ffffff08;backdrop-filter:blur(6px)}
+.tag b{color:var(--red2);font-weight:600}
+h1{font-size:clamp(38px,6.5vw,76px);line-height:1.15;font-weight:800;letter-spacing:1px;max-width:14em}
+h1 .hl{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{margin-top:22px;font-size:clamp(15px,1.6vw,19px);color:var(--dim);max-width:38em;line-height:1.8}
+.cta{margin-top:40px;display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+.cta .btn{padding:14px 32px;font-size:16px}
+.stats{margin-top:56px;display:flex;gap:min(8vw,72px);flex-wrap:wrap;justify-content:center}
+.stats div{text-align:center}
+.stats b{display:block;font-size:26px;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.stats span{font-size:13px;color:var(--dim)}
+
+/* ---------- phone mock ---------- */
+.phone{margin-top:70px;width:min(300px,70vw);aspect-ratio:9/18.5;border-radius:40px;border:1px solid #ffffff22;
+  background:linear-gradient(160deg,#141428,#0d0d18);position:relative;box-shadow:0 40px 100px #00000088, inset 0 0 0 6px #000;
+  animation:float 6s ease-in-out infinite}
+.phone .screen{position:absolute;inset:10px;border-radius:32px;overflow:hidden;background:
+  radial-gradient(120% 90% at 20% 10%,#2a1a4a 0%,transparent 55%),
+  radial-gradient(100% 80% at 90% 90%,#4a1a1a 0%,transparent 50%),#101020}
+.phone .gameui{position:absolute;inset:0;padding:22px;font-size:11px;color:#ffffff70;text-align:left;line-height:1.7}
+.phone .kills{position:absolute;top:20px;left:20px;background:#00000066;padding:8px 12px;border-radius:10px;border:1px solid #ffffff1a}
+.phone .fab{position:absolute;right:18px;top:42%;width:56px;height:56px;border-radius:50%;background:#1b1b2fcc;border:1.5px solid #fff;
+  display:grid;place-items:center;font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 8px 30px #000000aa;transition:transform .15s}
+.phone .fab:hover{transform:scale(1.1)}
+.phone .fab .rec{position:absolute;top:5px;right:5px;width:12px;height:12px;border-radius:50%;background:var(--red);animation:breath 1.8s ease-in-out infinite}
+.phone .toast{position:absolute;bottom:64px;left:50%;transform:translateX(-50%);background:#000000cc;border:1px solid #ffffff22;
+  padding:8px 16px;border-radius:999px;font-size:12px;white-space:nowrap;opacity:0;animation:toastin 6s ease-in-out infinite}
+.ring{position:absolute;inset:0;border-radius:50%;border:2px solid var(--red);animation:ping 2.4s ease-out infinite;pointer-events:none}
+
+/* ---------- sections ---------- */
+section{padding:110px 6vw;max-width:1200px;margin:0 auto;position:relative}
+.kicker{font-size:13px;letter-spacing:3px;color:var(--red2);text-transform:uppercase;margin-bottom:14px}
+h2{font-size:clamp(26px,3.6vw,42px);font-weight:800;letter-spacing:.5px}
+.lead{margin-top:14px;color:var(--dim);max-width:44em;line-height:1.8;font-size:15.5px}
+
+.grid{margin-top:56px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:30px;backdrop-filter:blur(8px);
+  transition:transform .25s,border-color .25s}
+.card:hover{transform:translateY(-6px);border-color:#ff3b3055}
+.card .ic{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;font-size:22px;margin-bottom:18px;
+  background:linear-gradient(135deg,#ff3b3026,#ffc46b1f);border:1px solid #ff3b3033}
+.card h3{font-size:17px;margin-bottom:10px}
+.card p{font-size:13.5px;color:var(--dim);line-height:1.75}
+.card code{background:#ffffff10;padding:1px 7px;border-radius:6px;font-size:12px;color:var(--red2)}
+
+/* ---------- how ---------- */
+.flow{margin-top:56px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;counter-reset:step}
+.step{position:relative;padding:28px 24px;border:1px solid var(--line);border-radius:20px;background:var(--card);counter-increment:step}
+.step::before{content:"0" counter(step);font-size:40px;font-weight:800;background:var(--grad);
+  -webkit-background-clip:text;background-clip:text;color:transparent;display:block;margin-bottom:14px}
+.step h3{font-size:16px;margin-bottom:8px}
+.step p{font-size:13px;color:var(--dim);line-height:1.7}
+
+/* ---------- tech ---------- */
+.pipe{margin-top:48px;display:flex;align-items:stretch;gap:0;flex-wrap:wrap}
+.node{flex:1;min-width:150px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 16px;text-align:center}
+.node b{display:block;font-size:14px;margin-bottom:6px}
+.node span{font-size:12px;color:var(--dim);line-height:1.6;display:block}
+.arrow{align-self:center;padding:0 10px;color:var(--red2);font-size:18px}
+@media(max-width:720px){.arrow{transform:rotate(90deg)}.pipe{flex-direction:column}}
+
+.table{margin-top:40px;width:100%;border-collapse:collapse;font-size:14px}
+.table th,.table td{padding:14px 16px;text-align:left;border-bottom:1px solid var(--line)}
+.table th{color:var(--dim);font-weight:500;font-size:13px}
+.table td code{background:#ffffff10;padding:2px 8px;border-radius:6px;font-size:12.5px;color:var(--red2)}
+
+/* ---------- cta bottom ---------- */
+.final{text-align:center;padding:130px 6vw}
+.final h2{max-width:16em;margin:0 auto}
+.final .cta{margin-top:44px}
+
+footer{border-top:1px solid var(--line);padding:36px 6vw;display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;
+  color:var(--dim);font-size:13px}
+footer a{color:var(--dim);text-decoration:none}
+footer a:hover{color:var(--txt)}
+
+@keyframes breath{0%,100%{opacity:1}50%{opacity:.25}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
+@keyframes ping{0%{transform:scale(1);opacity:.9}100%{transform:scale(1.7);opacity:0}}
+@keyframes toastin{0%,72%{opacity:0;transform:translate(-50%,10px)}78%,94%{opacity:1;transform:translate(-50%,0)}100%{opacity:0}}
+.reveal{opacity:0;transform:translateY(28px);transition:opacity .7s ease,transform .7s ease}
+.reveal.on{opacity:1;transform:none}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo"><span class="dot"></span>高光回录</div>
+  <div class="links">
+    <a href="#features">特性</a>
+    <a href="#how">使用</a>
+    <a href="#tech">技术</a>
+  </div>
+  <a class="btn btn-primary" href="https://github.com/owen88ob/highlight-recorder" target="_blank">GitHub ↗</a>
+</nav>
+
+<header>
+  <div class="glow a"></div><div class="glow b"></div>
+  <div class="tag">开源 · Android 8.0+ · <b>打完再存,不再错过</b></div>
+  <h1>每一波天秀,<br>都<span class="hl">值得被留下</span></h1>
+  <p class="sub">高光回录在后台静默循环录制你的屏幕,只保留最近 N 秒。
+  五杀落袋的那一刻,轻点悬浮球——刚才的高光,已经存好了。</p>
+  <div class="cta">
+    <a class="btn btn-primary" href="https://github.com/owen88ob/highlight-recorder/releases" target="_blank">⬇ 下载 APK</a>
+    <a class="btn btn-ghost" href="https://github.com/owen88ob/highlight-recorder" target="_blank">⭐ Star on GitHub</a>
+  </div>
+  <div class="stats">
+    <div><b>N 秒</b><span>回退时长 15–120s 可调</span></div>
+    <div><b>0 帧</b><span>原始画面拷贝,硬件编码</span></div>
+    <div><b>&lt;1s</b><span>按键到落盘的等待</span></div>
+    <div><b>MIT</b><span>完全开源免费</span></div>
+  </div>
+
+  <div class="phone">
+    <div class="screen">
+      <div class="gameui">▲ 巅峰赛 · 排位<br>PING 28ms · FPS 120</div>
+      <div class="kills">☠ 五连绝世!</div>
+      <div class="fab">存<span class="rec"></span><span class="ring"></span></div>
+      <div class="toast">✓ 已保存 30.0 秒高光</div>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="reveal">
+    <div class="kicker">Features</div>
+    <h2>为游戏而生,也为体验较真</h2>
+    <p class="lead">不是"再录一个录屏软件"。它只做一件事,并把这件事做到极致:让保存高光这个动作,快到不打断你的下一波团战。</p>
+  </div>
+  <div class="grid">
+    <div class="card reveal"><div class="ic">⏪</div><h3>时光倒流式录制</h3>
+      <p>环形缓冲常驻内存,只留最近 N+2 秒。按下保存的瞬间,从最近的关键帧切片拼接——不用提前开录,也不会存下整场对局。</p></div>
+    <div class="card reveal"><div class="ic">🎈</div><h3>悬浮球随叫随到</h3>
+      <p>全屏游戏之上依旧可点。可拖动、松手自动贴边、透明度可调,呼吸红点提示录制状态。单击保存,长按停止。</p></div>
+    <div class="card reveal"><div class="ic">⚡</div><h3>硬件级性能</h3>
+      <p>VirtualDisplay 直送 MediaCodec 输入面,全程零 Bitmap、零帧拷贝;编码声明 best-effort 为游戏让路。720p30 下额外占用仅几个百分点。</p></div>
+    <div class="card reveal"><div class="ic">🔊</div><h3>音画同录</h3>
+      <p>内录游戏原声(AudioPlaybackCapture)或麦克风解说,AAC 混轨,保存时按视频起点自动对齐。</p></div>
+    <div class="card reveal"><div class="ic">🛡️</div><h3>稳字当头</h3>
+      <p>前台服务 + 常驻通知;低电量、低内存自动降码率并提示,内存危急时体面暂停。被系统回收后自动尝试恢复。</p></div>
+    <div class="card reveal"><div class="ic">🎛️</div><h3>参数全可调</h3>
+      <p>回退时长 / 分辨率 / 帧率 / 码率 / H.264·H.265 / 音频来源,实时显示内存与体积预估,改完即生效。</p></div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="reveal">
+    <div class="kicker">Getting Started</div>
+    <h2>四步,存下第一个高光</h2>
+  </div>
+  <div class="flow">
+    <div class="step reveal"><h3>安装并授权</h3><p>首次打开引导页,逐项授予悬浮窗、通知等权限,每步都有"为什么需要它"的说明。</p></div>
+    <div class="step reveal"><h3>开始循环录制</h3><p>主页一键开始,系统弹窗确认一次即可。此后 App 在后台静默缓冲,你可以忘掉它。</p></div>
+    <div class="step reveal"><h3>打出高光,点一下</h3><p>五杀?神钩?单击悬浮球,最近 30 秒(可设)立刻在后台封装为 MP4,游戏零打断。</p></div>
+    <div class="step reveal"><h3>回放与分享</h3><p>视频库内查看缩略图、时长与大小,一键播放、分享给队友,或导出到相册。</p></div>
+  </div>
+</section>
+
+<section id="tech">
+  <div class="reveal">
+    <div class="kicker">Under the Hood</div>
+    <h2>环形缓冲 + GOP 对齐,如何做到不花屏</h2>
+    <p class="lead">编码输出按实际到达的 IDR 关键帧切成 1 秒分片,容量固定逐出;保存时起点必为关键帧,PTS 重定基为 0——这是回放即点即播、首帧不花的根本原因。</p>
+  </div>
+  <div class="pipe reveal">
+    <div class="node"><b>MediaProjection</b><span>VirtualDisplay<br>屏幕镜像</span></div>
+    <div class="arrow">➜</div>
+    <div class="node"><b>MediaCodec</b><span>硬件编码<br>零原始帧拷贝</span></div>
+    <div class="arrow">➜</div>
+    <div class="node"><b>环形缓冲</b><span>按 IDR 切 1s 分片<br>只留 N+2 秒</span></div>
+    <div class="arrow">➜</div>
+    <div class="node"><b>MediaMuxer</b><span>IDR 边界拼接<br>PTS 重定基</span></div>
+    <div class="arrow">➜</div>
+    <div class="node"><b>MP4</b><span>Movies/高光回录/<br>音画对齐</span></div>
+  </div>
+  <table class="table reveal">
+    <tr><th>技术栈</th><th></th></tr>
+    <tr><td>语言 / UI</td><td><code>Kotlin</code> <code>Jetpack Compose</code> <code>MVVM</code></td></tr>
+    <tr><td>采集编码</td><td><code>MediaProjection</code> <code>VirtualDisplay</code> <code>MediaCodec async</code></td></tr>
+    <tr><td>音频</td><td><code>AudioPlaybackCapture</code> <code>AAC</code></td></tr>
+    <tr><td>兼容</td><td><code>minSdk 26</code> <code>targetSdk 35</code> 适配 Android 10–15 行为变更</td></tr>
+    <tr><td>测试</td><td><code>JUnit</code> 环形缓冲 / PTS 重定基单元测试</td></tr>
+  </table>
+</section>
+
+<div class="final reveal">
+  <h2>下一波五杀,别再靠运气录到。</h2>
+  <div class="cta">
+    <a class="btn btn-primary" href="https://github.com/owen88ob/highlight-recorder/releases" target="_blank">⬇ 下载 APK</a>
+    <a class="btn btn-ghost" href="https://github.com/owen88ob/highlight-recorder" target="_blank">查看源码</a>
+  </div>
+</div>
+
+<footer>
+  <div>高光回录 · MIT License · © 2026 owen88ob</div>
+  <div><a href="https://github.com/owen88ob/highlight-recorder/issues" target="_blank">问题反馈</a> ·
+       <a href="https://github.com/owen88ob/highlight-recorder" target="_blank">GitHub</a></div>
+</footer>
+
+<script>
+const io = new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) { e.target.classList.add('on'); io.unobserve(e.target); }
+}), { threshold: .12 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+</script>
+</body>
+</html>
