@@ -1,6 +1,6 @@
 # 高光回录(Highlight Recorder)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B-green.svg)]()
 [![Website](https://img.shields.io/badge/Website-宣传页-orange.svg)](https://owen88ob.github.io/highlight-recorder/)
 
