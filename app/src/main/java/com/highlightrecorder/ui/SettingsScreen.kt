@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.highlightrecorder.data.AudioSource
+import com.highlightrecorder.data.needsMic
 import kotlin.math.roundToInt
 
 @Composable
@@ -138,17 +139,18 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 options = listOf(
                     AudioSource.INTERNAL to "内录",
                     AudioSource.MIC to "麦克风",
+                    AudioSource.INTERNAL_AND_MIC to "内录+麦克风",
                     AudioSource.MUTE to "静音",
                 ),
                 selected = settings.audioSource,
             ) { v ->
                 when {
-                    v == AudioSource.MIC && !viewModel.permissions.value.mic ->
+                    v.needsMic() && !viewModel.permissions.value.mic ->
                         micLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                     else -> viewModel.updateSettings { it.copy(audioSource = v) }
                 }
             }
-            Text("内录仅 Android 10+ 且目标 App 允许时有效", style = MaterialTheme.typography.bodySmall)
+            Text("内录仅 Android 10+ 且目标 App 允许时有效;混音时内录不可用则自动退化为纯麦克风", style = MaterialTheme.typography.bodySmall)
         }
 
         // ---- 悬浮窗 ----

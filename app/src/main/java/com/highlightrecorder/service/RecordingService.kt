@@ -16,8 +16,8 @@ import android.os.IBinder
 import android.util.Log
 import com.highlightrecorder.buffer.ClipWriter
 import com.highlightrecorder.capture.CapturePipeline
-import com.highlightrecorder.data.AudioSource
 import com.highlightrecorder.data.SettingsHolder
+import com.highlightrecorder.data.needsMic
 import com.highlightrecorder.overlay.OverlayManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -150,7 +150,7 @@ class RecordingService : Service() {
         }
         val settings = SettingsHolder.current
         try {
-            startForegroundWithType(settings.audioSource == AudioSource.MIC)
+            startForegroundWithType(settings.audioSource.needsMic())
 
             val mpm = getSystemService(MediaProjectionManager::class.java)
             val proj = mpm.getMediaProjection(resultCode, data)

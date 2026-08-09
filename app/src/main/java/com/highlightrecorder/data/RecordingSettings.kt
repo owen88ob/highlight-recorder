@@ -18,4 +18,7 @@ data class RecordingSettings(
     val overlayEdgeHide: Boolean = false,
 )
 
-enum class AudioSource { INTERNAL, MIC, MUTE }
+enum class AudioSource { INTERNAL, MIC, INTERNAL_AND_MIC, MUTE }
+
+/** 该音源是否需要麦克风权限/前台服务 microphone 类型。 */
+fun AudioSource.needsMic(): Boolean = this == AudioSource.MIC || this == AudioSource.INTERNAL_AND_MIC
