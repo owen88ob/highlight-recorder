@@ -54,6 +54,11 @@ fun OnboardingScreen(
     ) {
         Text("欢迎使用高光回录", style = MaterialTheme.typography.headlineSmall)
         Text(
+            "by owen88ob · GPL-3.0 开源",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
             "开始前需要以下几项授权,逐项完成即可:",
             style = MaterialTheme.typography.bodyMedium,
         )

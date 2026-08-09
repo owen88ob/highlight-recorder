@@ -45,7 +45,15 @@ fun HomeScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("高光回录", style = MaterialTheme.typography.headlineSmall)
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text("高光回录", style = MaterialTheme.typography.headlineSmall)
+            Text(
+                "  by owen88ob",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 6.dp, bottom = 2.dp),
+            )
+        }
 
         if (!perms.mandatoryOk) {
             Card(

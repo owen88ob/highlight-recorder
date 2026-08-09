@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.highlightrecorder.data.AudioSource
@@ -173,9 +174,86 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             }
         }
 
+        // ---- 赞助 ----
+        SponsorSection()
+
         Spacer(Modifier.height(4.dp))
         androidx.compose.material3.OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
             Text("返回")
+        }
+    }
+}
+
+/** 爱发电赞助档位,点击跳转对应下单页。 */
+private data class SponsorTier(
+    val emoji: String,
+    val name: String,
+    val price: String,
+    val desc: String,
+    val url: String,
+)
+
+private val sponsorTiers = listOf(
+    SponsorTier(
+        "☕", "请杯咖啡", "￥5.00 /月", "感谢您的支持!",
+        "https://ifdian.net/order/create?plan_id=46e7342a93ba11f1ab6b5254001e7c00&product_type=0&remark=&affiliate_code=",
+    ),
+    SponsorTier(
+        "🍔", "吃顿好的", "￥15.00 /月", "!!!感谢您的支持~~~",
+        "https://ifdian.net/order/create?plan_id=78c5003a93ba11f1bb9f52540025c377&product_type=0&remark=&affiliate_code=",
+    ),
+    SponsorTier(
+        "🚀", "强力发电", "￥50.00 /月", "感谢支持!有任何问题请联系 18022867417@163.com",
+        "https://ifdian.net/order/create?plan_id=963e89b093ba11f19e7952540025c377&product_type=0&remark=&affiliate_code=",
+    ),
+)
+
+@Composable
+private fun SponsorSection() {
+    val context = LocalContext.current
+    Section("赞助作者 owen88ob") {
+        Text(
+            "高光回录是 GPL-3.0 开源软件,完全免费。如果它帮你留下了精彩瞬间,欢迎请作者喝杯咖啡 ☕",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        sponsorTiers.forEach { tier ->
+            Card(
+                onClick = {
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(tier.url),
+                            ),
+                        )
+                    }
+                },
+                colors = androidx.compose.material3.CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(tier.emoji, style = MaterialTheme.typography.titleLarge)
+                    Column(modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 10.dp)) {
+                        Text(tier.name, fontWeight = FontWeight.Bold)
+                        Text(tier.desc, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(
+                        tier.price,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
         }
     }
 }
