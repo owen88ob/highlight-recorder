@@ -176,12 +176,12 @@ footer a:hover{color:var(--txt)}
       <p>全屏游戏之上依旧可点。可拖动、松手自动贴边、透明度可调,呼吸红点提示录制状态。单击保存,长按停止。</p></div>
     <div class="card reveal"><div class="ic">⚡</div><h3>硬件级性能</h3>
       <p>VirtualDisplay 直送 MediaCodec 输入面,全程零 Bitmap、零帧拷贝;编码声明 best-effort 为游戏让路。720p30 下额外占用仅几个百分点。</p></div>
-    <div class="card reveal"><div class="ic">🔊</div><h3>音画同录</h3>
-      <p>内录游戏原声(AudioPlaybackCapture)或麦克风解说,AAC 混轨,保存时按视频起点自动对齐。</p></div>
+    <div class="card reveal"><div class="ic">🔊</div><h3>音画同录,还能混音</h3>
+      <p>内录游戏原声(AudioPlaybackCapture)、麦克风解说,或两者实时混音——PCM 相加截幅合成单音轨,任何播放器都能正常播。</p></div>
     <div class="card reveal"><div class="ic">🛡️</div><h3>稳字当头</h3>
       <p>前台服务 + 常驻通知;低电量、低内存自动降码率并提示,内存危急时体面暂停。被系统回收后自动尝试恢复。</p></div>
     <div class="card reveal"><div class="ic">🎛️</div><h3>参数全可调</h3>
-      <p>回退时长 / 分辨率 / 帧率 / 码率 / H.264·H.265 / 音频来源,实时显示内存与体积预估,改完即生效。</p></div>
+      <p>回退时长 / 分辨率 / 帧率 / 码率 / H.264·H.265 / 音频来源 / 悬浮窗外观,实时显示内存与体积预估,改完即生效。深浅双色主题,跟随系统自动切换。</p></div>
   </div>
 </section>
 
@@ -219,7 +219,7 @@ footer a:hover{color:var(--txt)}
     <tr><th>技术栈</th><th></th></tr>
     <tr><td>语言 / UI</td><td><code>Kotlin</code> <code>Jetpack Compose</code> <code>MVVM</code></td></tr>
     <tr><td>采集编码</td><td><code>MediaProjection</code> <code>VirtualDisplay</code> <code>MediaCodec async</code></td></tr>
-    <tr><td>音频</td><td><code>AudioPlaybackCapture</code> <code>AAC</code></td></tr>
+    <tr><td>音频</td><td><code>AudioPlaybackCapture</code> <code>AAC</code> <code>PCM 双路混音</code></td></tr>
     <tr><td>兼容</td><td><code>minSdk 26</code> <code>targetSdk 35</code> 适配 Android 10–15 行为变更</td></tr>
     <tr><td>测试</td><td><code>JUnit</code> 环形缓冲 / PTS 重定基单元测试</td></tr>
   </table>
