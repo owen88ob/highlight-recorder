@@ -6,8 +6,9 @@ import android.media.ThumbnailUtils
 import android.os.Build
 import android.util.Size
 import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,12 +16,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -47,7 +50,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** 已保存高光列表:缩略图/时长/大小/时间,支持播放、分享、删除。 */
+/**
+ * 已保存高光列表:缩略图/时长/大小/时间。
+ * 单点播放;长按进入多选模式,支持全选、批量删除、批量分享。
+ */
 @Composable
 fun LibraryScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -55,15 +61,78 @@ fun LibraryScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var clips by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    val selectionMode = selected.isNotEmpty()
 
     fun refresh() {
         scope.launch {
             clips = repo.listClips()
             loaded = true
+            selected = emptySet()
         }
     }
 
     LaunchedEffect(Unit) { refresh() }
+
+    fun play(item: VideoItem) {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(item.uri, "video/mp4")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        runCatching { context.startActivity(intent) }
+            .onFailure { Toast.makeText(context, "没有可播放的应用", Toast.LENGTH_SHORT).show() }
+    }
+
+    fun share(items: List<VideoItem>) {
+        if (items.isEmpty()) return
+        val intent = if (items.size == 1) {
+            Intent(Intent.ACTION_SEND).apply {
+                type = "video/mp4"
+                putExtra(Intent.EXTRA_STREAM, items.first().uri)
+            }
+        } else {
+            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                type = "video/mp4"
+                putParcelableArrayListExtra(
+                    Intent.EXTRA_STREAM,
+                    ArrayList(items.map { it.uri }),
+                )
+            }
+        }
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        runCatching { context.startActivity(Intent.createChooser(intent, "分享高光")) }
+            .onFailure { Toast.makeText(context, "没有可分享的应用", Toast.LENGTH_SHORT).show() }
+    }
+
+    fun delete(items: List<VideoItem>) {
+        scope.launch {
+            var ok = 0
+            items.forEach { item ->
+                runCatching { if (repo.delete(item)) ok++ }
+            }
+            Toast.makeText(context, "已删除 $ok / ${items.size} 个视频", Toast.LENGTH_SHORT).show()
+            refresh()
+        }
+    }
+
+    // 批量删除确认
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("删除 ${selected.size} 个视频?") },
+            text = { Text("删除后不可恢复。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    delete(clips.filter { it.id in selected })
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("取消") }
+            },
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -71,9 +140,28 @@ fun LibraryScreen(onBack: () -> Unit) {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("视频库", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-            TextButton(onClick = { refresh() }) { Text("刷新") }
+        if (selectionMode) {
+            // 多选工具栏
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "已选 ${selected.size} 项",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = {
+                    selected = if (selected.size == clips.size) emptySet() else clips.map { it.id }.toSet()
+                }) { Text(if (selected.size == clips.size) "取消全选" else "全选") }
+                TextButton(onClick = { share(clips.filter { it.id in selected }) }) { Text("分享") }
+                TextButton(onClick = { confirmDelete = true }) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+                TextButton(onClick = { selected = emptySet() }) { Text("退出") }
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("视频库", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                TextButton(onClick = { refresh() }) { Text("刷新") }
+            }
         }
 
         if (loaded && clips.isEmpty()) {
@@ -88,33 +176,20 @@ fun LibraryScreen(onBack: () -> Unit) {
                 items(clips, key = { it.id }) { item ->
                     ClipRow(
                         item = item,
-                        onPlay = {
-                            val intent = Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(item.uri, "video/mp4")
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            runCatching { context.startActivity(intent) }
-                                .onFailure {
-                                    Toast.makeText(context, "没有可播放的应用", Toast.LENGTH_SHORT).show()
-                                }
-                        },
-                        onShare = {
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "video/mp4"
-                                putExtra(Intent.EXTRA_STREAM, item.uri)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            context.startActivity(Intent.createChooser(intent, "分享高光"))
-                        },
-                        onDelete = {
-                            scope.launch {
-                                runCatching { repo.delete(item) }
-                                    .onSuccess { refresh() }
-                                    .onFailure {
-                                        Toast.makeText(context, "删除失败: ${it.message}", Toast.LENGTH_SHORT).show()
-                                    }
+                        selectionMode = selectionMode,
+                        checked = item.id in selected,
+                        onClick = {
+                            if (selectionMode) {
+                                selected = if (item.id in selected) selected - item.id else selected + item.id
+                            } else {
+                                play(item)
                             }
                         },
+                        onLongClick = {
+                            if (!selectionMode) selected = setOf(item.id)
+                        },
+                        onShare = { share(listOf(item)) },
+                        onDelete = { delete(listOf(item)) },
                     )
                 }
             }
@@ -124,10 +199,14 @@ fun LibraryScreen(onBack: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ClipRow(
     item: VideoItem,
-    onPlay: () -> Unit,
+    selectionMode: Boolean,
+    checked: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -149,13 +228,23 @@ private fun ClipRow(
         }
     }
 
-    Card(modifier = Modifier
-        .fillMaxWidth()
-        .clickable(onClick = onPlay)) {
+    Card(
+        colors = if (checked) {
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        } else {
+            CardDefaults.cardColors()
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+    ) {
         Row(
             modifier = Modifier.padding(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (selectionMode) {
+                Checkbox(checked = checked, onCheckedChange = { onClick() })
+            }
             if (thumb != null) {
                 Image(
                     bitmap = thumb!!.asImageBitmap(),
@@ -173,7 +262,7 @@ private fun ClipRow(
                 .weight(1f)
                 .padding(start = 10.dp)) {
                 Text(item.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.size(2.dp))
                 val date = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
                     .format(Date(item.dateAddedSec * 1000))
                 Text(
@@ -184,9 +273,11 @@ private fun ClipRow(
                     ),
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Row {
-                    TextButton(onClick = onShare) { Text("分享") }
-                    TextButton(onClick = onDelete) { Text("删除") }
+                if (!selectionMode) {
+                    Row {
+                        TextButton(onClick = onShare) { Text("分享") }
+                        TextButton(onClick = onDelete) { Text("删除") }
+                    }
                 }
             }
         }
