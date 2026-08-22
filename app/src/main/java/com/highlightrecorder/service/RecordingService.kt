@@ -43,6 +43,7 @@ class RecordingService : Service() {
         const val ACTION_START = "com.highlightrecorder.action.START"
         const val ACTION_STOP = "com.highlightrecorder.action.STOP"
         const val ACTION_SAVE = "com.highlightrecorder.action.SAVE"
+        const val ACTION_REFRESH_OVERLAY = "com.highlightrecorder.action.REFRESH_OVERLAY"
         const val EXTRA_RESULT_CODE = "extra_result_code"
         const val EXTRA_RESULT_DATA = "extra_result_data"
 
@@ -138,6 +139,7 @@ class RecordingService : Service() {
             }
             ACTION_STOP -> stopRecording()
             ACTION_SAVE -> saveClip()
+            ACTION_REFRESH_OVERLAY -> refreshOverlay()
             else -> Log.w(TAG, "unknown action: ${intent?.action}")
         }
         return START_STICKY
@@ -288,6 +290,17 @@ class RecordingService : Service() {
         if (overlay == null) overlay = OverlayManager(this)
         overlay?.show()
         overlay?.setRecordingState(true)
+    }
+
+    /** 设置变更后重建悬浮窗(隐藏开关/透明度/大小实时生效);未在录制则服务自停。 */
+    private fun refreshOverlay() {
+        if (pipeline == null) {
+            stopSelf()
+            return
+        }
+        overlay?.hide()
+        overlay = OverlayManager(this)
+        showOverlay()
     }
 
     // ---- 前台服务与通知 ----

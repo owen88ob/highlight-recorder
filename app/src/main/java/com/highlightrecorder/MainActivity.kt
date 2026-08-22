@@ -28,6 +28,7 @@ import com.highlightrecorder.ui.LibraryScreen
 import com.highlightrecorder.ui.MainViewModel
 import com.highlightrecorder.ui.OnboardingScreen
 import com.highlightrecorder.ui.SettingsScreen
+import com.highlightrecorder.ui.TrashScreen
 import com.highlightrecorder.ui.theme.HighlightRecorderTheme
 
 class MainActivity : ComponentActivity() {
@@ -100,7 +101,13 @@ class MainActivity : ComponentActivity() {
                             SettingsScreen(viewModel = vm, onBack = { nav.popBackStack() })
                         }
                         composable("library") {
-                            LibraryScreen(onBack = { nav.popBackStack() })
+                            LibraryScreen(
+                                onBack = { nav.popBackStack() },
+                                onGoTrash = { nav.navigate("trash") },
+                            )
+                        }
+                        composable("trash") {
+                            TrashScreen(onBack = { nav.popBackStack() })
                         }
                     }
                 }

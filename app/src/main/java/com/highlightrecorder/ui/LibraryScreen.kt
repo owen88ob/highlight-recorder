@@ -53,20 +53,23 @@ import java.util.Locale
 /**
  * 已保存高光列表:缩略图/时长/大小/时间。
  * 单点播放;长按进入多选模式,支持全选、批量删除、批量分享。
+ * 删除一律经二次确认后移入回收站(见 TrashScreen)。
  */
 @Composable
-fun LibraryScreen(onBack: () -> Unit) {
+fun LibraryScreen(onBack: () -> Unit, onGoTrash: () -> Unit) {
     val context = LocalContext.current
     val repo = remember { VideoRepository(context) }
     val scope = rememberCoroutineScope()
     var clips by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<Set<Long>>(emptySet()) }
-    var confirmDelete by remember { mutableStateOf(false) }
+    var pendingTrash by remember { mutableStateOf<List<VideoItem>?>(null) }
     val selectionMode = selected.isNotEmpty()
+    val trashDays = com.highlightrecorder.data.SettingsHolder.current.trashAutoDeleteDays
 
     fun refresh() {
         scope.launch {
+            repo.purgeExpired(trashDays)
             clips = repo.listClips()
             loaded = true
             selected = emptySet()
@@ -105,31 +108,31 @@ fun LibraryScreen(onBack: () -> Unit) {
             .onFailure { Toast.makeText(context, "没有可分享的应用", Toast.LENGTH_SHORT).show() }
     }
 
-    fun delete(items: List<VideoItem>) {
+    fun trashItems(items: List<VideoItem>) {
         scope.launch {
             var ok = 0
             items.forEach { item ->
-                runCatching { if (repo.delete(item)) ok++ }
+                runCatching { if (repo.moveToTrash(item)) ok++ }
             }
-            Toast.makeText(context, "已删除 $ok / ${items.size} 个视频", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "已移入回收站 $ok / ${items.size} 个", Toast.LENGTH_SHORT).show()
             refresh()
         }
     }
 
-    // 批量删除确认
-    if (confirmDelete) {
+    // 删除(移入回收站)二次确认
+    pendingTrash?.let { items ->
         AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("删除 ${selected.size} 个视频?") },
-            text = { Text("删除后不可恢复。") },
+            onDismissRequest = { pendingTrash = null },
+            title = { Text(if (items.size > 1) "删除 ${items.size} 个视频?" else "删除该视频?") },
+            text = { Text("将移入回收站,${trashDays} 天后自动彻底删除,期间可在回收站恢复。") },
             confirmButton = {
                 TextButton(onClick = {
-                    confirmDelete = false
-                    delete(clips.filter { it.id in selected })
-                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                    pendingTrash = null
+                    trashItems(items)
+                }) { Text("移入回收站", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text("取消") }
+                TextButton(onClick = { pendingTrash = null }) { Text("取消") }
             },
         )
     }
@@ -152,7 +155,7 @@ fun LibraryScreen(onBack: () -> Unit) {
                     selected = if (selected.size == clips.size) emptySet() else clips.map { it.id }.toSet()
                 }) { Text(if (selected.size == clips.size) "取消全选" else "全选") }
                 TextButton(onClick = { share(clips.filter { it.id in selected }) }) { Text("分享") }
-                TextButton(onClick = { confirmDelete = true }) {
+                TextButton(onClick = { pendingTrash = clips.filter { it.id in selected } }) {
                     Text("删除", color = MaterialTheme.colorScheme.error)
                 }
                 TextButton(onClick = { selected = emptySet() }) { Text("退出") }
@@ -160,6 +163,7 @@ fun LibraryScreen(onBack: () -> Unit) {
         } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("视频库", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                TextButton(onClick = onGoTrash) { Text("回收站") }
                 TextButton(onClick = { refresh() }) { Text("刷新") }
             }
         }
@@ -189,7 +193,7 @@ fun LibraryScreen(onBack: () -> Unit) {
                             if (!selectionMode) selected = setOf(item.id)
                         },
                         onShare = { share(listOf(item)) },
-                        onDelete = { delete(listOf(item)) },
+                        onDelete = { pendingTrash = listOf(item) },
                     )
                 }
             }

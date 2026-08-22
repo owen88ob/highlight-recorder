@@ -16,6 +16,10 @@ data class RecordingSettings(
     val overlayAlpha: Float = 0.85f,
     val overlayScale: Float = 1.0f,
     val overlayEdgeHide: Boolean = false,
+    /** 彻底隐藏悬浮球(录制仍继续,从 App 设置恢复)。 */
+    val overlayHidden: Boolean = false,
+    /** 回收站自动清理天数。 */
+    val trashAutoDeleteDays: Int = 30,
 )
 
 enum class AudioSource { INTERNAL, MIC, INTERNAL_AND_MIC, MUTE }

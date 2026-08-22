@@ -155,12 +155,33 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
 
         // ---- 悬浮窗 ----
         Section("悬浮窗外观") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("彻底隐藏悬浮球")
+                    Text(
+                        "隐藏后仍正常录制,从本页恢复显示",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = settings.overlayHidden,
+                    onCheckedChange = { on -> viewModel.updateSettings { it.copy(overlayHidden = on) } },
+                )
+            }
             Text("透明度 %.0f%%".format(settings.overlayAlpha * 100), style = MaterialTheme.typography.bodySmall)
             Slider(
                 value = settings.overlayAlpha,
                 onValueChange = { v -> viewModel.updateSettings { it.copy(overlayAlpha = v) } },
-                valueRange = 0.3f..1f,
+                valueRange = 0f..1f,
             )
+            if (settings.overlayAlpha < 0.05f) {
+                Text(
+                    "完全透明时悬浮球仍在原位可点,建议配合记住位置或改用彻底隐藏",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
             Text("大小 %.2fx".format(settings.overlayScale), style = MaterialTheme.typography.bodySmall)
             Slider(
                 value = settings.overlayScale,
@@ -174,6 +195,18 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                     onCheckedChange = { on -> viewModel.updateSettings { it.copy(overlayEdgeHide = on) } },
                 )
             }
+        }
+
+        // ---- 回收站 ----
+        Section("回收站: ${settings.trashAutoDeleteDays} 天后自动彻底删除") {
+            Slider(
+                value = settings.trashAutoDeleteDays.toFloat(),
+                onValueChange = { v ->
+                    viewModel.updateSettings { it.copy(trashAutoDeleteDays = v.roundToInt().coerceIn(1, 90)) }
+                },
+                valueRange = 1f..90f,
+            )
+            Text("视频库删除的视频会先进入回收站,到期自动清理", style = MaterialTheme.typography.bodySmall)
         }
 
         // ---- 赞助 ----

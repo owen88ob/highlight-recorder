@@ -28,7 +28,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun updateSettings(transform: (RecordingSettings) -> RecordingSettings) {
-        viewModelScope.launch { settingsRepo.update(transform) }
+        viewModelScope.launch {
+            settingsRepo.update(transform)
+            // 录制中时让服务重建悬浮窗(隐藏/透明度/大小实时生效);未录制时服务收到即自停
+            val ctx = getApplication<Application>()
+            ctx.startService(
+                android.content.Intent(ctx, RecordingService::class.java)
+                    .setAction(RecordingService.ACTION_REFRESH_OVERLAY),
+            )
+        }
     }
 
     /** 权限快照,页面 onResume 时 [refreshPermissions]。 */

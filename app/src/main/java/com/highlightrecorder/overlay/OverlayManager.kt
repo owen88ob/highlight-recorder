@@ -53,6 +53,10 @@ class OverlayManager(private val context: Context) {
             return
         }
         val settings = SettingsHolder.current
+        if (settings.overlayHidden) {
+            Log.i(TAG, "overlay hidden by settings")
+            return
+        }
         val view = FloatingButtonView(context)
 
         val params = WindowManager.LayoutParams(
