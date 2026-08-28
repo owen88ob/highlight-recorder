@@ -86,6 +86,7 @@ object ClipWriter {
 
             val info = android.media.MediaCodec.BufferInfo()
             val videoPackets = PtsRebaser.rebaseVideo(video)
+            require(videoPackets.isNotEmpty()) { "no decodable video packets (no keyframe in buffer)" }
             for (p in videoPackets) {
                 info.set(0, p.size, p.ptsUs, if (p.isKeyFrame) android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME else 0)
                 muxer.writeSampleData(videoTrack, java.nio.ByteBuffer.wrap(p.data), info)

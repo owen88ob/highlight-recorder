@@ -50,4 +50,23 @@ class PtsRebaserTest {
         assertTrue(PtsRebaser.rebaseVideo(emptyList()).isEmpty())
         assertTrue(PtsRebaser.rebaseAudio(listOf(EncodedPacket(ByteArray(1), 0)), emptyList()).isEmpty())
     }
+
+    @Test
+    fun `重定基丢弃首个关键帧之前的包(强制切段安全网)`() {
+        // 第一个分片以非关键帧开头(强制切段产生),第二个分片正常
+        val bad = VideoSegment(1_000_000L)
+        bad.append(EncodedPacket(ByteArray(10), 1_000_000L, isKeyFrame = false))
+        bad.append(EncodedPacket(ByteArray(10), 1_033_333L, isKeyFrame = false))
+        val good = VideoSegment(2_000_000L)
+        good.append(EncodedPacket(ByteArray(10), 2_000_000L, isKeyFrame = true))
+        good.append(EncodedPacket(ByteArray(10), 2_033_333L, isKeyFrame = false))
+
+        val rebased = PtsRebaser.rebaseVideo(listOf(bad, good))
+        assertEquals(2, rebased.size)
+        assertEquals(0L, rebased.first().ptsUs)
+        assertTrue(rebased.first().isKeyFrame)
+
+        // 完全没有关键帧时返回空(调用方判空处理)
+        assertTrue(PtsRebaser.rebaseVideo(listOf(bad)).isEmpty())
+    }
 }

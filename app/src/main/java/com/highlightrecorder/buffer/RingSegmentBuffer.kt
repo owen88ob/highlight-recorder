@@ -14,11 +14,19 @@ import java.util.ArrayDeque
 class RingSegmentBuffer(
     /** 保留时长上限(微秒),通常取 回退时长N + 2s 富余。 */
     private val capacityUs: Long,
+    /** 开放分片超过该时长未见到关键帧时,回调 [onSegmentOverrun] 请求编码器补 IDR。 */
+    private val softSegmentUs: Long = 1_600_000L,
+    /** 编码器始终不给关键帧时的硬上限:强制切段,防止内存无限增长(OOM)。 */
+    private val hardSegmentUs: Long = 4_000_000L,
 ) {
+    /** 分片超时回调(由管线接到编码器 requestKeyFrame)。 */
+    var onSegmentOverrun: (() -> Unit)? = null
+
     private val lock = Any()
     private val segments = ArrayDeque<VideoSegment>()
     private var openSegment: VideoSegment? = null
     private var totalBytes: Int = 0
+    private var lastOverrunNotifyUs = 0L
 
     /** 当前缓冲覆盖时长(微秒)。 */
     val bufferedDurationUs: Long
@@ -41,6 +49,20 @@ class RingSegmentBuffer(
             } else if (openSegment == null) {
                 // 还没见到第一个关键帧,丢弃无法解码的头
                 return
+            } else {
+                val seg = openSegment!!
+                val span = packet.ptsUs - seg.startPtsUs
+                if (span > hardSegmentUs) {
+                    // 编码器迟迟不发 IDR:强制切段兜底,否则内存无限增长
+                    segments.addLast(seg)
+                    openSegment = VideoSegment(packet.ptsUs)
+                    evictLocked()
+                } else if (span > softSegmentUs &&
+                    packet.ptsUs - lastOverrunNotifyUs > 1_000_000L
+                ) {
+                    lastOverrunNotifyUs = packet.ptsUs
+                    onSegmentOverrun?.invoke()
+                }
             }
             val seg = openSegment!!
             seg.append(packet)
@@ -70,8 +92,8 @@ class RingSegmentBuffer(
     }
 
     private fun evictLocked() {
-        // 新分片加入后,若总跨度超容量,从头部逐出(至少保留 2 个分片防快照为空)
-        while (segments.size > 2) {
+        // 新分片加入后,若总跨度超容量,从头部逐出(至少留 1 个已封闭分片)
+        while (segments.size > 1) {
             val first = segments.peekFirst() ?: break
             val newestEnd = openSegment?.startPtsUs ?: segments.peekLast()?.endPtsUs ?: break
             if (newestEnd - first.startPtsUs <= capacityUs) break

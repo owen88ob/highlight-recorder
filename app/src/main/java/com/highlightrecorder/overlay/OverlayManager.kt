@@ -32,6 +32,9 @@ class OverlayManager(private val context: Context) {
         private const val PREFS = "overlay"
         private const val KEY_X = "pos_x"
         private const val KEY_Y = "pos_y"
+        /** 位置同时按屏幕比例存一份,旋转后按比例还原,避免绝对像素坐标出屏/跑偏。 */
+        private const val KEY_XF = "pos_x_frac"
+        private const val KEY_YF = "pos_y_frac"
     }
 
     private val wm = context.getSystemService(WindowManager::class.java)
@@ -59,6 +62,21 @@ class OverlayManager(private val context: Context) {
         }
         val view = FloatingButtonView(context)
 
+        // 优先按比例还原位置(旋转后依然贴着原来的边),老版本绝对坐标兜底并钳制
+        val screenW = context.resources.displayMetrics.widthPixels
+        val screenH = context.resources.displayMetrics.heightPixels
+        val maxX = (screenW - dp(56)).coerceAtLeast(0)
+        val maxY = (screenH - dp(56)).coerceAtLeast(0)
+        val clampedX: Int
+        val clampedY: Int
+        if (prefs.contains(KEY_XF)) {
+            clampedX = (prefs.getFloat(KEY_XF, 0f) * maxX).toInt().coerceIn(0, maxX)
+            clampedY = (prefs.getFloat(KEY_YF, 0.3f) * maxY).toInt().coerceIn(0, maxY)
+        } else {
+            clampedX = prefs.getInt(KEY_X, dp(16)).coerceIn(0, maxX)
+            clampedY = prefs.getInt(KEY_Y, dp(200)).coerceIn(0, maxY)
+        }
+
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -68,8 +86,8 @@ class OverlayManager(private val context: Context) {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = prefs.getInt(KEY_X, dp(16))
-            y = prefs.getInt(KEY_Y, dp(200))
+            x = clampedX
+            y = clampedY
         }
 
         view.alpha = settings.overlayAlpha
@@ -81,7 +99,7 @@ class OverlayManager(private val context: Context) {
         wm.addView(view, params)
         button = view
         lp = params
-        Log.i(TAG, "overlay shown")
+        com.highlightrecorder.data.FileLogger.log(TAG, "overlay shown at ($clampedX,$clampedY) screen ${screenW}x$screenH")
     }
 
     fun setRecordingState(recording: Boolean) {
@@ -98,7 +116,7 @@ class OverlayManager(private val context: Context) {
         }
         button = null
         lp = null
-        Log.i(TAG, "overlay hidden")
+        com.highlightrecorder.data.FileLogger.log(TAG, "overlay hidden")
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -136,8 +154,11 @@ class OverlayManager(private val context: Context) {
                         handler.removeCallbacks(longPressRunnable)
                     }
                     if (dragging) {
-                        params.x = startX + dx.toInt()
-                        params.y = startY + dy.toInt()
+                        // 拖动时钳制在屏幕内,防止拖出边界后找不到悬浮球
+                        val sw = context.resources.displayMetrics.widthPixels
+                        val sh = context.resources.displayMetrics.heightPixels
+                        params.x = (startX + dx.toInt()).coerceIn(0, (sw - view.width).coerceAtLeast(0))
+                        params.y = (startY + dy.toInt()).coerceIn(0, (sh - view.height).coerceAtLeast(0))
                         wm.updateViewLayout(view, params)
                     }
                     true
@@ -160,6 +181,9 @@ class OverlayManager(private val context: Context) {
     /** 松手后吸附到最近的左右边;开启贴边隐藏时半个按钮探出屏外。 */
     private fun snapToEdge(view: FloatingButtonView, params: WindowManager.LayoutParams) {
         val screenW = context.resources.displayMetrics.widthPixels
+        val screenH = context.resources.displayMetrics.heightPixels
+        // y 也钳制回屏幕内(拖动已限制,这里是旋转等边界情况的兜底)
+        params.y = params.y.coerceIn(0, (screenH - view.height).coerceAtLeast(0))
         val center = params.x + view.width / 2
         val edgeHide = SettingsHolder.current.overlayEdgeHide
         val target = if (center < screenW / 2) {
@@ -178,7 +202,11 @@ class OverlayManager(private val context: Context) {
             }
             start()
         }
-        prefs.edit().putInt(KEY_X, target).putInt(KEY_Y, params.y).apply()
+        prefs.edit()
+            .putInt(KEY_X, target).putInt(KEY_Y, params.y)
+            .putFloat(KEY_XF, if (screenW - view.width > 0) target.toFloat() / (screenW - view.width) else 0f)
+            .putFloat(KEY_YF, if (screenH - view.height > 0) params.y.toFloat() / (screenH - view.height) else 0f)
+            .apply()
     }
 
     private fun onClick() {

@@ -99,13 +99,15 @@ class VideoEncoder(
                 index: Int,
                 info: MediaCodec.BufferInfo,
             ) {
+                // stop() 进行中/之后回调仍可能被触发,此时绝不能再碰 codec
+                // (否则抛 IllegalStateException: Invalid to call during stop())
+                if (!running.get()) return
                 try {
-                    if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
-                        // csd 已随 format 下发,跳过
-                        codec.releaseOutputBuffer(index, false)
-                        return
-                    }
-                    if (info.size > 0) {
+                    // CODEC_CONFIG 包(csd 已随 format 下发)直接跳过;
+                    // 释放统一在 finally 里做一次——此前此处先 release 再 return,
+                    // finally 又释放一次,导致部分机型中途收到配置包时
+                    // 抛 "index N is not owned by client"(重复释放)
+                    if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0 && info.size > 0) {
                         val buf = codec.getOutputBuffer(index)
                         if (buf != null) {
                             val data = ByteArray(info.size)
@@ -117,7 +119,8 @@ class VideoEncoder(
                         }
                     }
                 } catch (t: Throwable) {
-                    listener?.onError(t)
+                    // 停止过程中的竞态错误不上报(属正常现象)
+                    if (running.get()) listener?.onError(t)
                 } finally {
                     try {
                         codec.releaseOutputBuffer(index, false)
@@ -127,12 +130,13 @@ class VideoEncoder(
             }
 
             override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {
+                if (!running.get()) return
                 outputFormat = format
                 listener?.onOutputFormat(format)
             }
 
             override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
-                listener?.onError(e)
+                if (running.get()) listener?.onError(e)
             }
         }, handler)
 

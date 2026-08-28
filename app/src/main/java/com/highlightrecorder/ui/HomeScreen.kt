@@ -125,6 +125,11 @@ fun HomeScreen(
             "提示:录制中悬浮球会一直显示,单击悬浮球即可保存,无需回到本页。",
             style = MaterialTheme.typography.bodySmall,
         )
+        Text(
+            "防杀提示:切到后台后,在最近任务页下滑本 App 卡片锁定后台;再长按桌面图标(或系统设置→应用管理)进入应用信息,把省电策略设为「无限制」,长时间录制更稳。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         Spacer(Modifier.weight(1f))
 

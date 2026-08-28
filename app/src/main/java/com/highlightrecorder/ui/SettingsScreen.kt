@@ -216,6 +216,23 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
         androidx.compose.material3.OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
             Text("返回")
         }
+
+        // 版本号
+        val context = LocalContext.current
+        val versionName = remember {
+            runCatching {
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName
+            }.getOrNull() ?: "unknown"
+        }
+        Text(
+            "高光回录 v$versionName · by owen88ob",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
     }
 }
 

@@ -71,4 +71,32 @@ class RingSegmentBufferTest {
         val buf = RingSegmentBuffer(capacityUs = 10_000_000)
         assertTrue(buf.snapshot(1_000_000).isEmpty())
     }
+
+    @Test
+    fun `编码器不发关键帧时分片超时回调`() {
+        val buf = RingSegmentBuffer(capacityUs = 60_000_000)
+        var overruns = 0
+        buf.onSegmentOverrun = { overruns++ }
+        // 只在开头给一个 IDR,之后 20 秒全是普通帧(模拟不守 I 帧间隔的编码器)
+        buf.onPacket(EncodedPacket(ByteArray(100), 0, isKeyFrame = true))
+        for (i in 1..600) {
+            buf.onPacket(EncodedPacket(ByteArray(100), i * 33_333L, isKeyFrame = false))
+        }
+        assertTrue("应触发超时回调", overruns >= 1)
+    }
+
+    @Test
+    fun `编码器不发关键帧时内存仍被容量约束`() {
+        val buf = RingSegmentBuffer(capacityUs = 5_000_000)
+        buf.onPacket(EncodedPacket(ByteArray(100), 0, isKeyFrame = true))
+        for (i in 1..600) {
+            buf.onPacket(EncodedPacket(ByteArray(100), i * 33_333L, isKeyFrame = false))
+        }
+        // 强制切段(4s 硬上限)+ 容量逐出:跨度应有界
+        assertTrue(
+            "跨度 ${buf.bufferedDurationUs}",
+            buf.bufferedDurationUs <= 5_000_000 + 4_000_000 + 1_000_000,
+        )
+        assertTrue(buf.segmentCount >= 1)
+    }
 }

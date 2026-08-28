@@ -16,6 +16,7 @@ import android.os.IBinder
 import android.util.Log
 import com.highlightrecorder.buffer.ClipWriter
 import com.highlightrecorder.capture.CapturePipeline
+import com.highlightrecorder.data.FileLogger
 import com.highlightrecorder.data.SettingsHolder
 import com.highlightrecorder.data.needsMic
 import com.highlightrecorder.overlay.OverlayManager
@@ -151,9 +152,13 @@ class RecordingService : Service() {
             return
         }
         val settings = SettingsHolder.current
+        // 分阶段打标:部分机型框架层异常 message 为 null,
+        // 带阶段 + 异常类型才能从用户反馈定位问题
+        var stage = "前台服务启动"
         try {
             startForegroundWithType(settings.audioSource.needsMic())
 
+            stage = "获取屏幕录制授权"
             val mpm = getSystemService(MediaProjectionManager::class.java)
             val proj = mpm.getMediaProjection(resultCode, data)
             proj.registerCallback(object : MediaProjection.Callback() {
@@ -164,14 +169,28 @@ class RecordingService : Service() {
             }, null)
             projection = proj
 
+            stage = "编码器初始化"
             val p = CapturePipeline(this, settings, proj)
             p.listener = object : CapturePipeline.Listener {
                 override fun onError(t: Throwable) {
                     Log.e(TAG, "pipeline error", t)
-                    fail("编码出错: ${t.message}")
+                    fail("编码出错: ${describe(t)}")
                 }
 
                 override fun onVideoFormat(format: MediaFormat) = Unit
+
+                override fun onRotationChanged() {
+                    // 重建悬浮窗并钳制回屏幕内,防止旋转后坐标出屏"消失"
+                    FileLogger.log(TAG, "onRotationChanged: rebuild overlay")
+                    try {
+                        overlay?.hide()
+                        overlay = OverlayManager(this@RecordingService)
+                        showOverlay()
+                    } catch (t: Throwable) {
+                        FileLogger.log(TAG, "overlay rebuild failed", t)
+                    }
+                    updateNotification("屏幕方向变化,缓冲已重新开始")
+                }
             }
             p.start()
             pipeline = p
@@ -194,21 +213,28 @@ class RecordingService : Service() {
                     ).show()
                 }
             }
-            Log.i(TAG, "recording started, rewind=${settings.rewindSeconds}s")
+            FileLogger.log(TAG, "recording started, rewind=${settings.rewindSeconds}s")
         } catch (t: Throwable) {
-            Log.e(TAG, "start failed", t)
+            FileLogger.log(TAG, "start failed at stage=$stage", t)
             cleanup()
-            fail("启动失败: ${t.message}")
+            fail("启动失败[$stage]: ${describe(t)}")
         }
     }
 
+    /** 异常描述:类型 + message + 原因链,避免框架层 message 为 null 时无从下手。 */
+    private fun describe(t: Throwable): String {
+        val chain = generateSequence(t) { it.cause }
+            .joinToString(" ← ") { "${it.javaClass.simpleName}(${it.message ?: "无详情"})" }
+        return chain
+    }
+
     private fun stopRecording() {
+        FileLogger.log(TAG, "recording stopped")
         cleanup()
         state.value = State.Idle
         bufferedSeconds.value = 0
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
-        Log.i(TAG, "recording stopped")
     }
 
     /** 保存最近 N 秒。快照只拷引用,编码与录制全程不中断。 */
@@ -280,6 +306,7 @@ class RecordingService : Service() {
     }
 
     private fun fail(message: String) {
+        FileLogger.log(TAG, "FAIL: $message")
         state.value = State.Error(message)
         updateNotification(message)
     }
