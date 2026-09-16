@@ -17,6 +17,7 @@
     <application
         android:name=".HighlightApp"
         android:allowBackup="true"
+        android:enableOnBackInvokedCallback="false"
         android:largeHeap="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -26,6 +27,7 @@
 
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density|fontScale"
             android:exported="true"
             android:launchMode="singleTask">
             <intent-filter>
