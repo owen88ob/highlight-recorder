@@ -191,6 +191,12 @@ class RecordingService : Service() {
                     }
                     updateNotification("屏幕方向变化,缓冲已重新开始")
                 }
+
+                override fun onAudioUnavailable(reason: String) {
+                    // 音频失败不再静默:通知栏常驻提示,避免用户录完才发现无声
+                    FileLogger.log(TAG, "audio unavailable: $reason")
+                    updateNotification("音频不可用,已静音录制($reason)")
+                }
             }
             p.start()
             pipeline = p
@@ -257,7 +263,17 @@ class RecordingService : Service() {
         scope.launch(Dispatchers.IO) {
             try {
                 if (video.isEmpty()) {
+                    // 缓冲为空也要给用户明确反馈(此前静默返回,用户以为按钮坏了)
                     Log.w(TAG, "buffer empty, nothing to save")
+                    FileLogger.log(TAG, "save ignored: video buffer empty")
+                    updateNotification("缓冲为空,无法保存(录制可能已中断)")
+                    scope.launch(Dispatchers.Main) {
+                        android.widget.Toast.makeText(
+                            this@RecordingService,
+                            "缓冲为空,无法保存,请留意通知栏录制状态",
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                    }
                     return@launch
                 }
                 val result = ClipWriter.write(
@@ -277,11 +293,35 @@ class RecordingService : Service() {
 
     private fun startTicker() {
         ticker?.cancel()
+        stallRecoveries = 0
         ticker = scope.launch {
             while (isActive) {
                 bufferedSeconds.value = ((pipeline?.videoBuffer?.bufferedDurationUs ?: 0L) / 1_000_000L).toInt()
+                checkVideoStall()
                 delay(500)
             }
+        }
+    }
+
+    /** 连续自动恢复次数,防止无限重启循环。 */
+    private var stallRecoveries = 0
+
+    /** 看门狗:画面编码停滞时自动重启编码器(复用 VirtualDisplay,无需重新授权)。 */
+    private fun checkVideoStall() {
+        val p = pipeline ?: return
+        if (state.value != State.Recording) return
+        if (!p.videoStalled()) {
+            // 画面恢复正常后重置计数,允许下次故障再次自动恢复
+            stallRecoveries = 0
+            return
+        }
+        FileLogger.log(TAG, "watchdog: video stalled, recoveries so far=$stallRecoveries")
+        if (stallRecoveries < 3 && p.recoverEncoder()) {
+            stallRecoveries++
+            updateNotification("检测到画面中断,正在自动恢复…($stallRecoveries/3)")
+        } else if (stallRecoveries >= 3) {
+            // 三次都救不回来:投影已被系统回收等硬故障,只能提示用户手动重开
+            updateNotification("录制异常且自动恢复失败,请停止后重新开始录制")
         }
     }
 

@@ -99,4 +99,17 @@ class RingSegmentBufferTest {
         )
         assertTrue(buf.segmentCount >= 1)
     }
+
+    @Test
+    fun `字节安全阀逐出旧分片并回调`() {
+        // 容量很大但字节预算小:应触发字节安全阀而不是时长逐出
+        val buf = RingSegmentBuffer(capacityUs = 600_000_000, maxBytes = 10_000)
+        var evictions = 0
+        buf.onByteBudgetEvict = { evictions++ }
+        // 每秒一个分片,每片 30 帧 × 100B = 3000B;4 秒即超 10000B 预算
+        feed(buf, seconds = 10, packetSize = 100)
+        assertTrue("字节 ${buf.bufferedBytes}", buf.bufferedBytes <= 10_000 + 3_000)
+        assertTrue("应触发字节安全阀回调", evictions >= 1)
+        assertTrue("至少保留一个分片", buf.segmentCount >= 1)
+    }
 }

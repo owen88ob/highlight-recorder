@@ -11,9 +11,11 @@ import android.media.MediaFormat
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.os.Build
+import android.os.Process
 import android.util.Log
 import com.highlightrecorder.buffer.EncodedPacket
 import com.highlightrecorder.data.AudioSource
+import com.highlightrecorder.data.FileLogger
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -52,7 +54,12 @@ class AudioCaptureEncoder(
     var outputFormat: MediaFormat? = null
         private set
 
-    private data class RecordChannel(val record: AudioRecord, val channels: Int)
+    private data class RecordChannel(
+        val record: AudioRecord,
+        val channels: Int,
+        /** 采集缓冲区容量(帧),用于 overrun 丢帧检测。 */
+        val bufferFrames: Int,
+    )
 
     @SuppressLint("MissingPermission")
     fun start() {
@@ -101,8 +108,14 @@ class AudioCaptureEncoder(
         // 混音/上混暂存缓冲
         val mixBuf = ByteBuffer.allocateDirect(SAMPLE_RATE / 10 * CHANNELS * 2)
 
+        // 高负载(2K@120 等)下游戏与视频编码会抢 CPU,音频线程必须抢占式调度,
+        // 否则 AudioRecord 缓冲溢出丢帧,纯采样计数 PTS 就会逐渐落后真实时间(音画不同步)
+        Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+
         val baseUs = System.nanoTime() / 1000
         var framesRead = 0L
+        var lastPtsUs = Long.MIN_VALUE
+        val hwTs = android.media.AudioTimestamp()
         val info = MediaCodec.BufferInfo()
         try {
             while (running.get()) {
@@ -111,11 +124,46 @@ class AudioCaptureEncoder(
                 if (inIdx >= 0) {
                     val buf = codec.getInputBuffer(inIdx)
                     if (buf != null) {
+                        // 读之前先取硬件时间锚点:framePosition 是声卡已采集的总帧数,
+                        // 与 framesRead 的差即"缓冲中 + 已丢失"的帧数
+                        var anchorFrames = -1L
+                        var anchorNanoUs = 0L
+                        @Suppress("DEPRECATION")
+                        if (primary.record.getTimestamp(
+                                hwTs, android.media.AudioTimestamp.TIMEBASE_MONOTONIC,
+                            ) == AudioRecord.SUCCESS
+                        ) {
+                            anchorFrames = hwTs.framePosition
+                            anchorNanoUs = hwTs.nanoTime / 1000
+                        }
+                        if (anchorFrames >= 0) {
+                            val pending = anchorFrames - framesRead
+                            if (pending > primary.bufferFrames) {
+                                // 缓冲溢出:AudioRecord 悄悄丢弃了最旧的数据,
+                                // 必须把丢失的帧数补回 framesRead,否则之后的音频全部提前
+                                val lost = pending - primary.bufferFrames
+                                framesRead += lost
+                                FileLogger.log(
+                                    TAG,
+                                    "audio overrun: lost ~$lost frames (${lost * 1000 / SAMPLE_RATE}ms), re-anchored",
+                                )
+                            }
+                        }
                         val bytes = readPrimary(primary, buf, mixBuf)
                         if (bytes > 0) {
                             secondary?.let { mixSecondary(it, buf, bytes, mixBuf) }
-                            val pts = baseUs + framesRead * 1_000_000L / SAMPLE_RATE
+                            // PTS:优先用硬件锚点反推(等于真实墙钟),锚点不可用时退化为采样计数
+                            var pts = if (anchorFrames >= 0) {
+                                anchorNanoUs - (anchorFrames - framesRead) * 1_000_000L / SAMPLE_RATE
+                            } else {
+                                baseUs + framesRead * 1_000_000L / SAMPLE_RATE
+                            }
                             framesRead += bytes / 2 / CHANNELS
+                            // 锚点切换瞬间可能产生微小回跳,强制单调递增(muxer 要求)
+                            if (lastPtsUs != Long.MIN_VALUE && pts <= lastPtsUs) {
+                                pts = lastPtsUs + 1
+                            }
+                            lastPtsUs = pts
                             codec.queueInputBuffer(inIdx, 0, bytes, pts, 0)
                         } else {
                             codec.queueInputBuffer(inIdx, 0, 0, baseUs, 0)
@@ -245,7 +293,7 @@ class AudioCaptureEncoder(
             record.release()
             return null
         }
-        return RecordChannel(record, CHANNELS)
+        return RecordChannel(record, CHANNELS, bufferSize(CHANNELS) / (2 * CHANNELS))
     }
 
     @SuppressLint("MissingPermission")
@@ -259,7 +307,7 @@ class AudioCaptureEncoder(
                 .build()
             if (record.state == AudioRecord.STATE_INITIALIZED) {
                 if (ch == 1) Log.i(TAG, "mic fallback to mono")
-                return RecordChannel(record, ch)
+                return RecordChannel(record, ch, bufferSize(ch) / (2 * ch))
             }
             Log.w(TAG, "mic record init failed for ${ch}ch")
             record.release()
@@ -289,6 +337,7 @@ class AudioCaptureEncoder(
         val minBuf = AudioRecord.getMinBufferSize(
             SAMPLE_RATE, channelConfig, AudioFormat.ENCODING_PCM_16BIT,
         )
-        return maxOf(minBuf * 2, SAMPLE_RATE / 10 * channels * 2)
+        // 缓冲给足 ~0.5s:高负载下线程短暂饿死也不至于溢出丢帧(丢帧=音画不同步)
+        return maxOf(minBuf * 4, SAMPLE_RATE / 2 * channels * 2)
     }
 }

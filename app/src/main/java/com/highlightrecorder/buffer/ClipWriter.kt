@@ -97,6 +97,15 @@ object ClipWriter {
                     info.set(0, p.size, p.ptsUs, 0)
                     muxer.writeSampleData(audioTrack, java.nio.ByteBuffer.wrap(p.data), info)
                 }
+                // 诊断:音画不同步排查用(音频尾 - 视频尾 应接近 0)
+                if (audioPackets.isNotEmpty()) {
+                    com.highlightrecorder.data.FileLogger.log(
+                        TAG,
+                        "tracks: video ${videoPackets.size}pkts end=${videoPackets.last().ptsUs / 1000}ms, " +
+                            "audio ${audioPackets.size}pkts start=${audioPackets.first().ptsUs / 1000}ms " +
+                            "end=${audioPackets.last().ptsUs / 1000}ms",
+                    )
+                }
             }
             muxer.stop()
             ok = true

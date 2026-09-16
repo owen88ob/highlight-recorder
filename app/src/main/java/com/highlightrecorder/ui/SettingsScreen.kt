@@ -70,17 +70,22 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 valueRange = 15f..120f,
             )
             val memMb = settings.videoBitrateBps / 8L * (settings.rewindSeconds + 2) / 1_000_000
-            Text("缓冲内存预估: 约 ${memMb} MB(码率 × 时长)", style = MaterialTheme.typography.bodySmall)
+            val valveMb = minOf(768, maxOf(300, memMb * 3 / 2))
+            Text("缓冲内存预估: 约 ${memMb} MB(码率 × 时长;激烈场景码率冲高,超过 ${valveMb}MB 安全阀将自动缩短实际缓冲时长)", style = MaterialTheme.typography.bodySmall)
         }
 
         // ---- 分辨率 ----
         Section("分辨率") {
             ChipRow(
-                options = listOf(0 to "跟随屏幕", 720 to "720p", 1080 to "1080p"),
+                options = listOf(
+                    0 to "跟随屏幕", 720 to "720p", 1080 to "1080p",
+                    1440 to "2K", 2160 to "4K",
+                ),
                 selected = settings.resolutionShortEdge,
             ) { v -> viewModel.updateSettings { it.copy(resolutionShortEdge = v) } }
             Text(
-                "游戏场景建议 720p;「跟随屏幕」在高刷/2K 屏上开销最大",
+                "游戏场景建议 720p/1080p;2K/4K 与「跟随屏幕」开销大,需配合高码率," +
+                    "设备不支持时会自动降到编码器上限",
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -88,9 +93,16 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
         // ---- 帧率 ----
         Section("帧率") {
             ChipRow(
-                options = listOf(30 to "30 fps", 60 to "60 fps"),
+                options = listOf(
+                    30 to "30 fps", 60 to "60 fps", 90 to "90 fps", 120 to "120 fps",
+                ),
                 selected = settings.frameRate,
             ) { v -> viewModel.updateSettings { it.copy(frameRate = v) } }
+            Text(
+                "90/120 fps 需要屏幕高刷与编码器性能支持,实际帧率以设备能力为准;" +
+                    "高帧率建议同步提高码率",
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
 
         // ---- 码率 ----
@@ -112,7 +124,7 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                     onValueChange = { v ->
                         viewModel.updateSettings { it.copy(videoBitrateBps = (v * 1_000_000).toInt()) }
                     },
-                    valueRange = 1f..30f,
+                    valueRange = 1f..60f,
                 )
             }
             val perHourMb = settings.videoBitrateBps / 8L * 3600 / 1_000_000
@@ -151,6 +163,15 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 }
             }
             Text("内录仅 Android 10+ 且目标 App 允许时有效;混音时内录不可用则自动退化为纯麦克风", style = MaterialTheme.typography.bodySmall)
+            if (android.os.Build.VERSION.SDK_INT < 29 &&
+                (settings.audioSource == AudioSource.INTERNAL || settings.audioSource == AudioSource.INTERNAL_AND_MIC)
+            ) {
+                Text(
+                    "⚠ 本机系统低于 Android 10,不支持内录,录制将无声;请改用「麦克风」",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
 
         // ---- 悬浮窗 ----

@@ -42,11 +42,28 @@ class CapturePipeline(
         fun onVideoFormat(format: MediaFormat)
         /** 屏幕旋转导致编码器重启(缓冲已清空)。 */
         fun onRotationChanged()
+        /** 音频采集初始化失败或运行中出错(录制继续,但成品无声)。 */
+        fun onAudioUnavailable(reason: String)
     }
 
     var listener: Listener? = null
 
-    val videoBuffer = RingSegmentBuffer((settings.rewindSeconds + SLACK_SECONDS) * 1_000_000L)
+    val videoBuffer = RingSegmentBuffer(
+        capacityUs = (settings.rewindSeconds + SLACK_SECONDS) * 1_000_000L,
+        // 字节安全阀按码率动态计算:预估(码率×保留时长)的 1.5 倍,保底 300MB、封顶 768MB。
+        // 固定 300MB 在 2K@120fps 高码率下会被 VBR 峰值触发,把 60s 回退截短成 40~50s。
+        maxBytes = minOf(
+            768L * 1024 * 1024,
+            maxOf(
+                300L * 1024 * 1024,
+                settings.videoBitrateBps / 8L * (settings.rewindSeconds + SLACK_SECONDS) * 3 / 2,
+            ),
+        ).toInt(),
+    ).apply {
+        onByteBudgetEvict = { total ->
+            FileLogger.log(TAG, "byte budget evict: buffer=${total / 1024 / 1024}MB, VBR 峰值超预估,回退时长被临时缩短")
+        }
+    }
     val audioBuffer = AudioRingBuffer((settings.rewindSeconds + SLACK_SECONDS) * 1_000_000L)
 
     @Volatile
@@ -61,6 +78,14 @@ class CapturePipeline(
     private var audioEncoder: AudioCaptureEncoder? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var lastRotation: Int = Surface.ROTATION_0
+
+    /** 最近一次收到视频编码包的时间(nanoTime),看门狗用。 */
+    @Volatile
+    private var lastVideoPacketNs = 0L
+
+    /** 上次编码器重启时间(ms),限频防止显示事件风暴导致反复重启。 */
+    @Volatile
+    private var lastRestartMs = 0L
 
     @Volatile
     var running = false
@@ -109,6 +134,30 @@ class CapturePipeline(
     /** 运行中调整码率(降级用)。 */
     fun adjustBitrate(bps: Int) = encoder?.adjustBitrate(bps)
 
+    /** 画面采集是否已停滞([stallMs] 毫秒内没有任何编码包)。 */
+    fun videoStalled(stallMs: Long = 3_000): Boolean {
+        if (!running) return false
+        val last = lastVideoPacketNs
+        if (last <= 0) return false
+        return (System.nanoTime() - last) / 1_000_000 > stallMs
+    }
+
+    /**
+     * 看门狗触发的编码器恢复:重启编码器(复用 VirtualDisplay)。
+     * 限频 10 秒一次,防止显示事件风暴下反复重启把缓冲反复清空。
+     * @return true 表示本次执行了重启
+     */
+    @Synchronized
+    fun recoverEncoder(): Boolean {
+        if (!running || virtualDisplay == null) return false
+        val now = System.currentTimeMillis()
+        if (now - lastRestartMs < 10_000) return false
+        lastRestartMs = now
+        FileLogger.log(TAG, "watchdog recovery: restarting encoder")
+        restartEncoder()
+        return true
+    }
+
     /** 旋转变化:重建编码器,复用原 VirtualDisplay(Android 14+ 同一投影实例禁止二次创建)。 */
     @Synchronized
     private fun restartEncoder() {
@@ -128,6 +177,9 @@ class CapturePipeline(
             // 换绑到新编码器输入面,不新建 VirtualDisplay
             vd.resize(currentWidth, currentHeight, context.resources.displayMetrics.densityDpi)
             vd.setSurface(enc.inputSurface)
+            // 宽限期:重启后短时间内看门狗不应误报
+            lastVideoPacketNs = System.nanoTime()
+            lastRestartMs = System.currentTimeMillis()
             FileLogger.log(TAG, "encoder restarted ${currentWidth}x$currentHeight rotation=$lastRotation")
         } catch (t: Throwable) {
             FileLogger.log(TAG, "restart encoder failed", t)
@@ -153,7 +205,10 @@ class CapturePipeline(
             mime = settings.videoMime,
         )
         enc.listener = object : VideoEncoder.Listener {
-            override fun onPacket(packet: EncodedPacket) = videoBuffer.onPacket(packet)
+            override fun onPacket(packet: EncodedPacket) {
+                lastVideoPacketNs = System.nanoTime()
+                videoBuffer.onPacket(packet)
+            }
 
             override fun onOutputFormat(format: MediaFormat) {
                 videoFormat = format
@@ -174,6 +229,7 @@ class CapturePipeline(
     private fun startVideo() {
         val enc = createEncoder()
         encoder = enc
+        lastVideoPacketNs = System.nanoTime()
         // 首次启动才创建 VirtualDisplay(同一 MediaProjection 只能建一个)
         virtualDisplay = projection.createVirtualDisplay(
             "highlight-recorder",
@@ -197,13 +253,17 @@ class CapturePipeline(
                 }
 
                 override fun onError(t: Throwable) {
+                    FileLogger.log(TAG, "audio error, continue without audio: ${t.message}")
                     Log.w(TAG, "audio error, continue without audio", t)
+                    listener?.onAudioUnavailable("运行中音频出错: ${t.message ?: t.javaClass.simpleName}")
                 }
             }
             audio.start()
             audioEncoder = audio
         } catch (t: Throwable) {
+            FileLogger.log(TAG, "audio capture unavailable, continue muted: ${t.message}")
             Log.w(TAG, "audio capture unavailable, continue muted", t)
+            listener?.onAudioUnavailable("音频初始化失败: ${t.message ?: t.javaClass.simpleName}")
         }
     }
 
@@ -258,7 +318,8 @@ class CapturePipeline(
         val (w, h) = if (settings.resolutionShortEdge <= 0) {
             even(sw) to even(sh)
         } else {
-            val target = settings.resolutionShortEdge
+            // 目标短边不超过屏幕实际短边,避免无谓放大(如 4K 档位用于 1080p 屏)
+            val target = minOf(settings.resolutionShortEdge, minOf(sw, sh))
             if (sw <= sh) {
                 target to (target.toLong() * sh / sw).toInt()
             } else {

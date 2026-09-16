@@ -18,9 +18,14 @@ class RingSegmentBuffer(
     private val softSegmentUs: Long = 1_600_000L,
     /** 编码器始终不给关键帧时的硬上限:强制切段,防止内存无限增长(OOM)。 */
     private val hardSegmentUs: Long = 4_000_000L,
+    /** 缓冲总字节安全阀:高码率+长回退时超出则从头部逐出(缩短实际可回退时长,防 OOM)。 */
+    private val maxBytes: Int = 300 * 1024 * 1024,
 ) {
     /** 分片超时回调(由管线接到编码器 requestKeyFrame)。 */
     var onSegmentOverrun: (() -> Unit)? = null
+
+    /** 字节安全阀逐出回调(诊断用,记录实际码率超过预估的场景)。 */
+    var onByteBudgetEvict: ((totalBytes: Int) -> Unit)? = null
 
     private val lock = Any()
     private val segments = ArrayDeque<VideoSegment>()
@@ -98,6 +103,11 @@ class RingSegmentBuffer(
             val newestEnd = openSegment?.startPtsUs ?: segments.peekLast()?.endPtsUs ?: break
             if (newestEnd - first.startPtsUs <= capacityUs) break
             totalBytes -= segments.removeFirst().sizeBytes
+        }
+        // 字节安全阀:超出预算同样从头部逐出(至少留 1 个)
+        while (segments.size > 1 && totalBytes > maxBytes) {
+            totalBytes -= segments.removeFirst().sizeBytes
+            onByteBudgetEvict?.invoke(totalBytes)
         }
     }
 }
