@@ -67,7 +67,7 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 onValueChange = { v ->
                     viewModel.updateSettings { it.copy(rewindSeconds = (v / 15).roundToInt() * 15) }
                 },
-                valueRange = 15f..120f,
+                valueRange = 15f..300f,
             )
             val memMb = settings.videoBitrateBps / 8L * (settings.rewindSeconds + 2) / 1_000_000
             val valveMb = minOf(768, maxOf(300, memMb * 3 / 2))
