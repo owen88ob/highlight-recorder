@@ -141,7 +141,7 @@ footer a:hover{color:var(--txt)}
 
 <header>
   <div class="glow a"></div><div class="glow b"></div>
-  <div class="tag">开源 · Android 8.0+ · 最新版 <b>v1.1.4</b></div>
+  <div class="tag">开源 · Android 8.0+ · 最新版 <b>v1.2.3</b></div>
   <h1>每一波天秀,<br>都<span class="hl">值得被留下</span></h1>
   <p class="sub">高光回录在后台静默循环录制你的屏幕,只保留最近 N 秒。
   五杀落袋的那一刻,轻点悬浮球——刚才的高光,已经存好了。</p>
@@ -186,7 +186,7 @@ footer a:hover{color:var(--txt)}
     <div class="card reveal"><div class="ic">🛡️</div><h3>稳字当头</h3>
       <p>前台服务 + 常驻通知;低电量、低内存自动降码率并提示,内存危急时体面暂停。被系统回收后自动尝试恢复。</p></div>
     <div class="card reveal"><div class="ic">🎛️</div><h3>参数全可调</h3>
-      <p>回退时长 / 分辨率 / 帧率 / 码率 / H.264·H.265 / 音频来源 / 悬浮窗外观,实时显示内存与体积预估,改完即生效。深浅双色主题,跟随系统自动切换。</p></div>
+      <p>回退时长 / 分辨率(720p~4K) / 帧率(30~120fps) / 码率 / H.264·H.265 / 音频来源 / 悬浮窗外观,实时显示内存与体积预估,改完即生效。深浅双色主题,跟随系统自动切换。</p></div>
   </div>
 </section>
 
@@ -236,6 +236,10 @@ footer a:hover{color:var(--txt)}
     <h2>更新日志</h2>
   </div>
   <div class="grid" style="grid-template-columns:1fr;margin-top:40px">
+    <div class="card reveal">
+      <h3>v1.2.3 <span style="color:var(--dim);font-size:13px;font-weight:400">2026-09-13</span></h3>
+      <p>分辨率新增 2K/4K 档位,帧率新增 90/120fps,自定义码率上限 60Mbps(高码率缓冲安全阀动态扩容,防 OOM);修复高负载下音画不同步(音频时间戳改用硬件时钟锚定 + 丢帧补偿);音频录制失败时通知栏明确提示;新增录制看门狗,画面中断自动恢复(修复部分机型小窗口后缓冲归零);缓冲为空时点保存有明确提示。</p>
+    </div>
     <div class="card reveal">
       <h3>v1.1.4 <span style="color:var(--dim);font-size:13px;font-weight:400">2026-08-28</span></h3>
       <p>修复旋转屏幕导致录制中断(SecurityException / IllegalStateException)与悬浮窗丢失;修复长时间录制内存溢出(编码器不发关键帧时缓冲无限增长);修复部分机型「跟随屏幕」启动失败(编码器长边超限自动收敛);悬浮球位置按比例记忆,旋转不跑偏;主页新增防杀后台提示;设置页显示版本号。</p>
